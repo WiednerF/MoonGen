@@ -1,3 +1,4 @@
 [submodule "libmoon"]
 	path = libmoon
-	url = https://github.com/libmoon/libmoon
+	url = https://github.com/WiednerF/libmoon
+	branch = dpdk-20.08

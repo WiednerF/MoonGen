@@ -26,6 +26,11 @@ function configure(parser)
 	parser:description("Generate traffic which can be used by moonsniff to establish latencies induced by a device under test.")
 	parser:argument("dev", "Devices to use."):args(2):convert(tonumber)
 	parser:option("-r --rate", "Transmit rate in Mbit/s."):args("*"):default(10000):convert(tonumber)
+	parser:option("--timed-rate", "Transmit rate of the timed flow in Mbit/s."):default(1500):convert(tonumber):target('timedFlowRate')
+	parser:option("--timed-start", "Start time of the timed flow in seconds after warm-up."):convert(tonumber):default(10):target('timedFlowStart')
+	parser:option("--timed-stop", "Stop time of the timed flow in seconds after warm-up."):convert(tonumber):default(20):target('timedFlowStop')
+	parser:option("--timed-src-ip", "The src IP of the timed flow"):default("10.3.2.100"):target('timedSrcIp')
+	parser:option("--timed-dst-ip", "The dst IP of the timed flow"):default("10.5.2.100"):target('timedDstIp')
 	parser:option("-s --src-ip", "The src IP per flow"):args("*"):default("-1")
 	parser:option("-d --dst-ip", "The dst IP per flow"):args("*"):default("-1")
 	parser:option("-v --vlan", "VLANs per Flow"):args("*"):default(-1):convert(tonumber)
@@ -33,7 +38,7 @@ function configure(parser)
 	parser:option("-p --packets", "Send only the number of packets specified"):default(100000):convert(tonumber):target("numberOfPackets")
 	parser:option("-x --size", "Packet size in bytes."):convert(tonumber):default(100):target('packetSize')
 	parser:option("-b --burst", "Burst in bytes"):args("*"):default(10000):convert(tonumber)
-	parser:option("-w --warm-up", "Warm-up device by sending 1000 pkts and pausing n seconds before real test begins."):convert(tonumber):default(0):target('warmUp')
+	parser:option("-w --warm-up", "Warm-up device by sending n seconds before real test begins."):convert(tonumber):default(0):target('warmUp')
 	parser:option("-f --flows", "Number of flows (randomized source IP)."):default(1):convert(tonumber):target('flows')
 	parser:option("-i --ip", "Version of IP to use either 4 or  6"):default(4):target("ip"):convert(tonumber)
 
@@ -103,6 +108,8 @@ function master(args)
 	for i,s in ipairs(args.mac) do
 		args.mac[i] = convertMacAddress(s)
 	end
+	args.timedSrcIp = parseIPAddress(args.timedSrcIp)
+	args.timedDstIp = parseIPAddress(args.timedDstIp)
 
 	args.dev[1] = device.config { port = args.dev[1], txQueues = 1 }
 	args.dev[2] = device.config { port = args.dev[2], rxQueues = 1 }
@@ -123,7 +130,7 @@ function master(args)
 	end
 		
 	if args.warmUp > 0 then
-		print('warm up active')
+		print(string.format('warm up active: %u s', args.warmUp))
 	end
 
 	sender0:wait()
@@ -148,7 +155,48 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 	local bufs = mempool:bufArray()
 	local counter = 0
 	local numFlowEntries = table.getn(flows)
+	local flowTimer1 = timer:new(args.warmUp + args.timedFlowStart)
+	local flowAdded = false
+	local flowTimer2 = timer:new(args.warmUp + args.timedFlowStop)
+	local flowRemoved = false
 	while lm.running() do
+        if flowTimer1:expired() and not flowAdded then
+			pkt_id = {}
+			flow_count = flow_count + 1
+			for i=1,flow_count do
+				table.insert(pkt_id,0)
+			end
+
+			args.flows = args.flows + 1
+			args.rate[#args.rate + 1] = args.timedFlowRate
+			args.dst_ip[#args.dst_ip + 1] = args.timedDstIp
+			args.src_ip[#args.src_ip + 1] = args.timedSrcIp
+			args.vlan[#args.vlan + 1] = 1
+            queue:setRate(sum(args.rate))
+	        flows = tableOfFlows(args.flows, args.rate)
+			numFlowEntries = table.getn(flows)
+			counter = incAndWrap(counter, numFlowEntries)
+			flowAdded = true
+        end
+        if flowTimer2:expired() and not flowRemoved then
+			pkt_id = {}
+			flow_count = flow_count - 1
+			for i=1,flow_count do
+				table.insert(pkt_id,0)
+			end
+
+			args.flows = args.flows - 1
+			args.rate[#args.rate] = nil
+			args.dst_ip[#args.dst_ip] = nil
+			args.src_ip[#args.src_ip] = nil
+			args.vlan[#args.vlan] = nil
+            queue:setRate(sum(args.rate))
+	        flows = tableOfFlows(args.flows, args.rate)
+			numFlowEntries = table.getn(flows)
+			counter = incAndWrap(counter, numFlowEntries)
+			flowRemoved = true
+        end
+	
 		bufs:alloc(args.packetSize)
 
 		for i, buf in ipairs(bufs) do
@@ -168,7 +216,7 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 			end
 			counter = incAndWrap(counter, numFlowEntries)
 		end
-		bufs:offloadUdpChecksums()  -- also offloads IP checksums
+		bufs:offloadUdpChecksums()
 		queue:send(bufs)
 	end
 end
@@ -190,7 +238,48 @@ function generateTrafficv6(queue, args, flows, burst, vlan, mac, flow_count, src
 	local bufs = mempool:bufArray()
 	local counter = 0
 	local numFlowEntries = table.getn(flows)
+	local flowTimer1 = timer:new(args.warmUp + args.timedFlowStart)
+	local flowAdded = false
+	local flowTimer2 = timer:new(args.warmUp + args.timedFlowStop)
+	local flowRemoved = false
 	while lm.running() do
+        if flowTimer1:expired() and not flowAdded then
+			pkt_id = {}
+			flow_count = flow_count + 1
+			for i=1,flow_count do
+				table.insert(pkt_id,0)
+			end
+
+			args.flows = args.flows + 1
+			args.rate[#args.rate + 1] = args.timedFlowRate
+			args.dst_ip[#args.dst_ip + 1] = args.timedDstIp
+			args.src_ip[#args.src_ip + 1] = args.timedSrcIp
+			args.vlan[#args.vlan + 1] = 1
+            queue:setRate(sum(args.rate))
+	        flows = tableOfFlows(args.flows, args.rate)
+			numFlowEntries = table.getn(flows)
+			counter = incAndWrap(counter, numFlowEntries)
+			flowAdded = true
+        end
+        if flowTimer2:expired() and not flowRemoved then
+			pkt_id = {}
+			flow_count = flow_count - 1
+			for i=1,flow_count do
+				table.insert(pkt_id,0)
+			end
+
+			args.flows = args.flows - 1
+			args.rate[#args.rate] = nil
+			args.dst_ip[#args.dst_ip] = nil
+			args.src_ip[#args.src_ip] = nil
+			args.vlan[#args.vlan] = nil
+            queue:setRate(sum(args.rate))
+	        flows = tableOfFlows(args.flows, args.rate)
+			numFlowEntries = table.getn(flows)
+			counter = incAndWrap(counter, numFlowEntries)
+			flowRemoved = true
+        end
+
 		bufs:alloc(args.packetSize)
 
 		for i, buf in ipairs(bufs) do

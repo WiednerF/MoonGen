@@ -14,6 +14,7 @@ function configure(parser)
 	parser:option("-r --rate-multiplier", "Speed up or slow down replay, 1 = use intervals from file, default = replay as fast as possible"):default(0):convert(tonumber):target("rateMultiplier")
 	parser:option("-s --buffer-flush-time", "Time to wait before stopping MoonGen after enqueuing all packets. Increase for pcaps with a very low rate."):default(10):convert(tonumber):target("bufferFlushTime")
 	parser:flag("-l --loop", "Repeat pcap file.")
+	parser:option("-ln --loop-number", "Number of times to loop through the file"):default(1):convert(tonumber):target("loopTime")
 	parser:flag("-noEth --noEthernetHeader", "The PCAP files have no Ethernet Header, create one")
 	local args = parser:parse()
 	return args
@@ -26,14 +27,14 @@ function master(args)
 	if args.rateMultiplier > 0 then
 		rateLimiter = limiter:new(dev:getTxQueue(0), "custom")
 	end
-	local replayer = mg.startTask("replay", dev:getTxQueue(0), args.files, args.loop, rateLimiter, args.rateMultiplier, args.bufferFlushTime, args.noEthernetHeader)
+	local replayer = mg.startTask("replay", dev:getTxQueue(0), args.files, args.loop, rateLimiter, args.rateMultiplier, args.bufferFlushTime, args.noEthernetHeader, args.loopTime)
 	stats.startStatsTask{txDevices = {dev}}
 	replayer:wait()
 	mg:stop()
 	mg.waitForTasks()
 end
 
-function replay(queue, files, loop, rateLimiter, multiplier, sleepTime,noEthernetHeader)
+function replay(queue, files, loop, rateLimiter, multiplier, sleepTime, noEthernetHeader, loopTime)
 	local mempool
 	if noEthernetHeader then
 		mempool = memory.createMemPool{n=4096,func=function(buf)
@@ -48,6 +49,7 @@ function replay(queue, files, loop, rateLimiter, multiplier, sleepTime,noEtherne
 		pcapFiles[index] = pcap:newReader(value)
 	end
 	local pcapFile = pcapFiles[1]
+	local loopTime = loopTime
 	local position  = 1
 	local prev = 0
 	local linkSpeed = queue.dev:getLinkStatus().speed
@@ -90,6 +92,14 @@ function replay(queue, files, loop, rateLimiter, multiplier, sleepTime,noEtherne
 					pcapFile = pcapFiles[1]
 					prev = 0
 					position = 1
+				elseif loopTime > 1:
+					for _,value in ipairs(pcapFiles) do
+						value:reset()
+					end
+					pcapFile = pcapFiles[1]
+					prev = 0
+					position = 1
+					loopTime = loopTime - 1
 				else
 					break
 				end

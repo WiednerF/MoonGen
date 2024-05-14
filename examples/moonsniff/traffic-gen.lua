@@ -15,7 +15,7 @@ local limiter = require "software-ratecontrol"
 local MS_TYPE = 0b01010101
 local band = bit.band
 
-local SRC_IP_BASE	= "10.0.0.10" -- actual address will be SRC_IP_BASE + random(0, flows)
+local SRC_IP_BASE	= "198.18.0.0" -- actual address will be SRC_IP_BASE + random(0, flows)
 
 function configure(parser)
 	parser:description("Generate traffic which can be used by moonsniff to establish latencies induced by a device under test.")

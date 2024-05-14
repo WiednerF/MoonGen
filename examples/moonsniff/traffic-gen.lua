@@ -15,7 +15,8 @@ local limiter = require "software-ratecontrol"
 local MS_TYPE = 0b01010101
 local band = bit.band
 
-local SRC_IP_BASE	= "198.18.0.0" -- actual address will be SRC_IP_BASE + random(0, flows)
+local SRC_IP_BASE	= "198.18.1.0" -- actual address will be SRC_IP_BASE + random(0, flows)
+local DST_IP_BASE	= "198.18.0.0"
 
 function configure(parser)
 	parser:description("Generate traffic which can be used by moonsniff to establish latencies induced by a device under test.")
@@ -62,6 +63,7 @@ function generateTraffic(queue, args, rateLimiter, dstMAC, srcMAC)
 	log:info("Trying to enable rx timestamping of all packets, this isn't supported by most nics")
 	local pkt_id = 0
 	local baseIP = parseIPAddress(SRC_IP_BASE)
+	local baseIPDST = parseIPAddress(DST_IP_BASE)
 	local numberOfPackets = args.numberOfPackets
 	if args.warmUp then
 		numberOfPackets = numberOfPackets + 945
@@ -97,6 +99,7 @@ function generateTraffic(queue, args, rateLimiter, dstMAC, srcMAC)
 			counter = counter + 1
 			if args.flows > 1 then
 				pkt.ip4.src:set(baseIP + (counter % args.flows))
+				pkt.ip4.dst:set(baseIPDST + (counter % args.flows))
 			end
 			--if args.warmUp > 0 and counter == 1000 then
 			--	print("Warm-up ended, no packets for " .. args.warmUp .. "s.")

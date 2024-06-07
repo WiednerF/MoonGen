@@ -139,8 +139,8 @@ function master(args)
 end
 
 function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src_ip, dst_ip)
-	local pkt_id = {}--Needed for simpler handling
-	for i=1,flow_count do
+	local pkt_id = {} -- store current packet ids in a table (1 entry per flow)
+	for i=1,flow_count+1 do -- already consider the timed flow here
 		table.insert(pkt_id,0)
 	end
 	local mempool = memory.createMemPool(function(buf)
@@ -161,12 +161,6 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 	local flowRemoved = false
 	while lm.running() do
         if flowTimer1:expired() and not flowAdded then
-			pkt_id = {}
-			flow_count = flow_count + 1
-			for i=1,flow_count do
-				table.insert(pkt_id,0)
-			end
-
 			args.flows = args.flows + 1
 			args.rate[#args.rate + 1] = args.timedFlowRate
 			args.dst_ip[#args.dst_ip + 1] = args.timedDstIp
@@ -179,12 +173,6 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 			flowAdded = true
         end
         if flowTimer2:expired() and not flowRemoved then
-			pkt_id = {}
-			flow_count = flow_count - 1
-			for i=1,flow_count do
-				table.insert(pkt_id,0)
-			end
-
 			args.flows = args.flows - 1
 			args.rate[#args.rate] = nil
 			args.dst_ip[#args.dst_ip] = nil
@@ -211,8 +199,8 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 			pkt.udp:setSrcPort(SRC_PORT + flows[counter+1])
 			pkt.eth:setDst(mac[vlan[flows[counter+1]]])
 			buf:setVlan(vlan[flows[counter+1]])
-			if pkt_id[flows[counter+1]] > 4294967296 then
-								pkt_id[flows[counter+1]] = 0
+			if pkt_id[flows[counter+1]] > 4294967295 then
+				pkt_id[flows[counter+1]] = 0
 			end
 			counter = incAndWrap(counter, numFlowEntries)
 		end
@@ -222,8 +210,8 @@ function generateTrafficv4(queue, args, flows, burst, vlan, mac, flow_count, src
 end
 
 function generateTrafficv6(queue, args, flows, burst, vlan, mac, flow_count, src_ip, dst_ip)
-	local pkt_id = {}--Needed for simpler handling
-	for i=1,flow_count do
+	local pkt_id = {} -- store current packet ids in a table (1 entry per flow)
+	for i=1,flow_count+1 do -- already consider the timed flow here
 		table.insert(pkt_id,0)
 	end
 	local mempool = memory.createMemPool(function(buf)
@@ -244,12 +232,6 @@ function generateTrafficv6(queue, args, flows, burst, vlan, mac, flow_count, src
 	local flowRemoved = false
 	while lm.running() do
         if flowTimer1:expired() and not flowAdded then
-			pkt_id = {}
-			flow_count = flow_count + 1
-			for i=1,flow_count do
-				table.insert(pkt_id,0)
-			end
-
 			args.flows = args.flows + 1
 			args.rate[#args.rate + 1] = args.timedFlowRate
 			args.dst_ip[#args.dst_ip + 1] = args.timedDstIp
@@ -262,12 +244,6 @@ function generateTrafficv6(queue, args, flows, burst, vlan, mac, flow_count, src
 			flowAdded = true
         end
         if flowTimer2:expired() and not flowRemoved then
-			pkt_id = {}
-			flow_count = flow_count - 1
-			for i=1,flow_count do
-				table.insert(pkt_id,0)
-			end
-
 			args.flows = args.flows - 1
 			args.rate[#args.rate] = nil
 			args.dst_ip[#args.dst_ip] = nil
@@ -294,8 +270,8 @@ function generateTrafficv6(queue, args, flows, burst, vlan, mac, flow_count, src
 			pkt.udp:setSrcPort(SRC_PORT + flows[counter+1])
 			pkt.eth:setDst(mac[vlan[flows[counter+1]]])
 			buf:setVlan(vlan[flows[counter+1]])
-			if pkt_id[flows[counter+1]] > 4294967296 then
-								pkt_id[flows[counter+1]] = 0
+			if pkt_id[flows[counter+1]] > 4294967295 then
+				pkt_id[flows[counter+1]] = 0
 			end
 			counter = incAndWrap(counter, numFlowEntries)
 		end
